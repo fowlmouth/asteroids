@@ -1,17 +1,17 @@
-import ast_comps, fowltek/entitty, fowltek/sdl2/engine
-import_all_sdl2_modules
+import lib/ast_comps, lib/ast_serv
+import fowltek/entitty, fowltek/sdl2/engine
 import os, fowltek/idgen, fowltek/vector_math, strutils
 import math, tables, fowltek/tmaybe, fowltek/bbtree
+import_all_sdl2_modules
 randomize()
 
 setImageRoot getAppDir()/"gfx"
 
 var NG =  newSdlEngine()
 
-import ast_serv
 var activeServer: TCServ
 
-include ast_boilerplate
+include lib/ast_boilerplate
 
 var localPlayerID = -1
 template localPlayer:expr = activeServer.get_ent(localPlayerID)
