@@ -34,31 +34,34 @@ const Asteroids = [
 
 proc init_random_asteroid (X: PEntity)= 
   X.loadSimpleAnim NG, Asteroids[random(Asteroids.len)]
+  X[BoundingCircle] = BoundingCircle(radius: X[SpriteInst].sprite.center.x.float)
 
 proc add_asteroids (S: PCServ, num = 10) =
   S.add_ents(
     num,
-    Pos, Vel, SpriteInst, SimpleAnim, ToroidalBounds
+    Pos, Vel, SpriteInst, SimpleAnim, ToroidalBounds, Health, BoundingCircle
   ).each_ent_cb(
     S,
     init_random_asteroid
   )
 
-proc initialize_local_game (ast_count = (if paramCount() == 1: paramStr(1).parseInt.int else: 10)) =
+proc initialize_local_game (
+    ast_count = (if paramCount() == 1: paramStr(1).parseInt.int else: 10)
+  ) =
   activeServer = newServ()
 
   activeServer.add_asteroids ast_count
 
   localPlayerID = activeServer.add_ent(activeServer.domain.newEntity(Pos, Vel, SpriteInst, ToroidalBounds, 
-    HID_Controller, InputState, Acceleration, Orientation, RollSprite
+    HID_Controller, InputState, Acceleration, Orientation, RollSprite,
+    BoundingCircle
   ))
-  
 
-  if(var (error, msg) = HID_Dispatcher.requestDevice("Keyboard", LocalPlayer); error):
-    echo "Could not register keyboard: ", msg
+  if(var errorMsg = HID_Dispatcher.requestDevice("Keyboard", LocalPlayer); errorMsg):
+    echo "Could not register keyboard: ", errorMsg.val
   LocalPlayer[SpriteInst].loadSprite NG, "hornet_54x54.png"
-  
-  
+  LocalPlayer[BoundingCircle].radius = 19.0
+
   mouseEntID = activeServer.add_ent(activeServer.domain.newEntity(Pos, HID_Controller,
     DebugShape)) 
   mouseEntID.ent[DebugShape] = DebugCircle(5.0)

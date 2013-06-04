@@ -24,11 +24,87 @@ SimpleAnim.setInitializer proc(X: PEntity) =
   X[SimpleAnim].timer = 1000.0
 
 
-proc handleEvent* (disp: var T_HID_Dispatcher; device: string; event: var sdl2.TEvent): bool =
-  if disp.hasDevice(device) and disp.devices[device].takenBy:  
+msg_impl(ToroidalBounds, update) do (dt: float) :
+  let p = entity[Pos].addr
+  let R = entity[ToroidalBounds].rect.addr
+  var warped = false
+  template wt(body: stmt): stmt =
+    warped = true
+    body
+  if p.x.cint < r.x:
+    wt: p.x = r[].right.float
+  elif p.x.cint > r[].right:
+    wt: p.x = r.x.float
+  if p.y.cint < R.y:
+    wt: p.y = R[].bottom.float
+  elif p.y.cint > R[].bottom:
+    wt: p.y = R.y.float
+
+  if warped:
+    activeServer.bbtree.remove entity.id
+    activeServer.bbtree.insert entity.id, entity.getBoundingBox 
+
+
+
+## HID Dispatcher for sdl events
+
+type
+  T_HID_DispatchRec* = object
+    takenBy: TMaybe[int]
+    setup: proc(X: PEntity)
+    name: string
+
+  T_HID_Dispatcher* = object
+    devices*: TTable[int, T_HID_DispatchRec]
+
+var HID_Dispatcher*: T_HID_Dispatcher
+HID_Dispatcher.devices =  initTable[int, T_HID_DispatchRec](8)
+
+template HID_Device_Impl *(name_str: expr[string]; body: stmt): stmt {.immediate.} =
+  block:
+    var dev: T_HID_DispatchRec
+    dev.name = name_str
+    dev.setup = proc(X: PEntity) =
+      body
+      X[HID_Controller].name = name_str
+    HID_Dispatcher.devices[name_str.deviceID] = dev
+
+
+var HID_device_counter* : int
+proc next_hid_id : int =
+  result = HID_device_counter
+  HID_device_counter.inc
+
+proc deviceID* (name: expr[string]): int =
+  var ID {.global.}: int = next_hid_id()
+  return ID
+
+proc hasDevice* (disp: var T_HID_Dispatcher;
+      ID: int): bool =
+  disp.devices.hasKey (ID)
+
+proc requestDevice* (disp: var T_HID_Dispatcher; dev_name: expr[string]; 
+    entity: PEntity): TMaybe[string] =
+  
+  let ID = deviceID(dev_name)
+  
+  if not disp.hasDevice(ID):
+    return Just("Invalid device #$#" % $ID)
+  
+  if disp.devices[ID].takenBy:
+    return Just("Device is already registered.")
+  
+  disp.devices[ID].setup(entity)
+  disp.devices.mget(ID).takenBy = Just(entity.id)
+
+
+proc handleEvent* (disp: var T_HID_Dispatcher; device: expr[string]; event: var sdl2.TEvent): bool =
+  let ID = deviceID(device)
+  if disp.hasDevice(ID) and disp.devices[ID].takenBy:  
     result = 
-      activeServer.getEnt(disp.devices[device].takenBy.val)[HID_Controller].cb(
-        activeServer.getEnt(disp.devices[device].takenBy.val), event)
+      activeServer.getEnt(disp.devices[ID].takenBy.val)[HID_Controller].cb(
+        activeServer.getEnt(disp.devices[ID].takenBy.val), event)
+
 
 HID_DeviceImpl("Mouse"):
   X[HID_Controller].cb = proc(X: PEntity; event: var TEvent): bool =
@@ -74,29 +150,8 @@ HID_DeviceImpl("Keyboard"):
 
 
 
-msg_impl(ToroidalBounds, update) do (dt: float) :
-  let p = entity[Pos].addr
-  let R = entity[ToroidalBounds].rect.addr
-  var warped = false
-  template wt(body: stmt): stmt =
-    warped = true
-    body
-  if p.x.cint < r.x:
-    wt: p.x = r[].right.float
-  elif p.x.cint > r[].right:
-    wt: p.x = r.x.float
-  if p.y.cint < R.y:
-    wt: p.y = R[].bottom.float
-  elif p.y.cint > R[].bottom:
-    wt: p.y = R.y.float
-
-  if warped:
-    activeServer.bbtree.remove entity.id
-    activeServer.bbtree.insert entity.id, entity.getBoundingBox 
-
 
 ## helpful
 proc drawDebugStrings (E: PEntity; R: PRenderer) =
   mlStringRGBA R, 10,10, E.debugStr, 0,190,190,255
-proc vec2s* [A: TNumber] (some: TVector2[A]): TVector2[int16] = (some.x.int16,some.y.int16)
 

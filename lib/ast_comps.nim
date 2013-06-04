@@ -6,6 +6,14 @@ import_all_sdl2_modules
 import_all_sdl2_helpers
 
 type TVector2f* = TVector2[float]
+
+template vec_accessor (name; ty): stmt {.immediate.} =
+  proc `vec2 name`* [A: TNumber] (some: TVector2[A]): TVector2[ty] = (some.x.ty,some.y.ty)
+  proc `vec2 name`* [A: TNumber] (x,y: A): TVector2[ty] = (x.ty, y.ty)
+
+vec_accessor f, float
+vec_accessor s, int16
+
 const
   TAU = PI * 2
   HalfPI = PI/2
@@ -229,37 +237,21 @@ HID_Controller.setInitializer proc(X: PEntity) =
 debugStrImpl(HID_Controller):
   result.add "HID Controller: $#" % entity[HID_Controller].name
 
-## HID Dispatcher for sdl events
 
 type
-  T_HID_DispatchRec* = tuple[takenBy: TMaybe[int], setup: proc(X: PEntity)]
-  T_HID_Dispatcher* = object
-    devices*: TTable[string, T_HID_DispatchRec]  
+  BoundingCircle* = object
+    radius*: float
+BoundingCircle.requiresComponent Pos
 
-var HID_Dispatcher*: T_HID_Dispatcher
-HID_Dispatcher.devices =  initTable[string, T_HID_DispatchRec](8)
+msg_impl(BoundingCircle, getBoundingBox, 1001) do -> TBB:
+  let (p, r) = (entity[Pos].addr, entity[BoundingCircle].radius)
+  result = bb(p.x - r, p.y - r, r * 2, r * 2)
 
-
-template HID_Device_Impl *(name_str: expr[string]; body: stmt): stmt {.immediate.} =
-  block:
-    var dev: T_HID_DispatchRec
-    dev.setup = proc(X: PEntity) =
-      body
-      X[HID_Controller].name = name_str
-    HID_Dispatcher.devices[name_str] = dev
-
-proc hasDevice* (disp: var T_HID_Dispatcher; device: string): bool = disp.devices.hasKey(device)
-
-proc requestDevice* (disp: var T_HID_Dispatcher; device: string; 
-    entity: PEntity): TMaybe[string] =
-  if not disp.hasDevice(device):
-    return Just("Invalid device $#" % device)
-  elif disp.devices[device].takenBy:
-    return Just("Device is already registered.")
-  
-  disp.devices[device].setup(entity)
-  disp.devices.mget(device).takenBy = Just(entity.id)
-
+defaultDebugStr BoundingCircle
+debugDrawImpl BoundingCircle:
+  let p = entity[Pos].vec2s
+  R.circleRGBA p.x, p.y, entity[BoundingCircle].radius.int16, 
+    0,255,0,255
 
 
 # RollSprite are the fake-3d sprites like the ship sprites (rotation angles are rows)
