@@ -13,7 +13,11 @@ var activeServer: TCServ
 
 include lib/ast_boilerplate
 
-var localPlayerID = -1
+var 
+  localPlayerID = -1
+  mouseEntID = -1
+
+template ENT (id): expr = activeServer.getEnt(id)
 template localPlayer:expr = activeServer.get_ent(localPlayerID)
 
 const Asteroids = [
@@ -48,10 +52,19 @@ proc initialize_local_game (ast_count = (if paramCount() == 1: paramStr(1).parse
   localPlayerID = activeServer.add_ent(activeServer.domain.newEntity(Pos, Vel, SpriteInst, ToroidalBounds, 
     HID_Controller, InputState, Acceleration, Orientation, RollSprite
   ))
+  
 
   if(var (error, msg) = HID_Dispatcher.requestDevice("Keyboard", LocalPlayer); error):
     echo "Could not register keyboard: ", msg
   LocalPlayer[SpriteInst].loadSprite NG, "hornet_54x54.png"
+  
+  
+  mouseEntID = activeServer.add_ent(activeServer.domain.newEntity(Pos, HID_Controller,
+    DebugShape)) 
+  mouseEntID.ent[DebugShape] = DebugCircle(5.0)
+  if(var err = HID_Dispatcher.requestDevice("Mouse", mouseEntID.ent); err):
+    echo "Could not register mouse: ", err.val
+  
 
 initialize_local_game()
 
@@ -60,6 +73,8 @@ var running = true
 var paused = false
 var debugDrawEnabled = false
 template stopRunning = running = false
+
+var collisions: seq[int] = @[]
 
 while running:
   while NG.pollHandle:
@@ -76,27 +91,38 @@ while running:
     of keyUp:
       if not paused:
         discard HID_Dispatcher.handleEvent("Keyboard", NG.evt)
+    of MouseMotion, MouseButtonDown, MouseButtonUp, MouseWheel:
+      if not paused: 
+        discard HID_Dispatcher.handleEvent("Mouse", NG.evt)
     else:nil
-  
+
   let dt = NG.frameDeltaFLT
   
   activeServer.poll
   
   if not paused:
     activeServer.update dt
-    
+
+    if localPlayerID != -1:
+      collisions.setLen 0
+      activeServer.bbtree.collectCollisions localPlayerID, collisions
+
     NG.setDrawColor 0,0,0,255
     NG.clear
-    
+
     eachEntity(activeServer):
       entity.draw NG
-    
+
     LocalPlayer.drawDebugStrings NG
-    
+
     if debugDrawEnabled:
       eachEntity(activeServer):
         entity.debugDraw NG
       activeServer.bbtree.debugDraw NG
+
+    for ID in collisions:
+      let p = vec2s(ID.ent[pos])
+      NG.circleRGBA p.x,p.y, 20, 0,0,255,255      
   
   NG.present
 

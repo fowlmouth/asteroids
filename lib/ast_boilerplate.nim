@@ -30,6 +30,13 @@ proc handleEvent* (disp: var T_HID_Dispatcher; device: string; event: var sdl2.T
       activeServer.getEnt(disp.devices[device].takenBy.val)[HID_Controller].cb(
         activeServer.getEnt(disp.devices[device].takenBy.val), event)
 
+HID_DeviceImpl("Mouse"):
+  X[HID_Controller].cb = proc(X: PEntity; event: var TEvent): bool =
+    if event.kind == mouseMotion:
+      let m = evMouseMotion(event)
+      X[pos].x = m.x.float
+      x[pos].y = m.y.float
+      result = true
 
 HID_DeviceImpl("Keyboard"):
   #assert X.hasComponent(HID_Controller)
@@ -66,5 +73,30 @@ HID_DeviceImpl("Keyboard"):
     else: nil
 
 
+
+msg_impl(ToroidalBounds, update) do (dt: float) :
+  let p = entity[Pos].addr
+  let R = entity[ToroidalBounds].rect.addr
+  var warped = false
+  template wt(body: stmt): stmt =
+    warped = true
+    body
+  if p.x.cint < r.x:
+    wt: p.x = r[].right.float
+  elif p.x.cint > r[].right:
+    wt: p.x = r.x.float
+  if p.y.cint < R.y:
+    wt: p.y = R[].bottom.float
+  elif p.y.cint > R[].bottom:
+    wt: p.y = R.y.float
+
+  if warped:
+    activeServer.bbtree.remove entity.id
+    activeServer.bbtree.insert entity.id, entity.getBoundingBox 
+
+
+## helpful
 proc drawDebugStrings (E: PEntity; R: PRenderer) =
-  mlStringRGBA R, 10,10, E.debugStr, 0,150,50,255
+  mlStringRGBA R, 10,10, E.debugStr, 0,190,190,255
+proc vec2s* [A: TNumber] (some: TVector2[A]): TVector2[int16] = (some.x.int16,some.y.int16)
+

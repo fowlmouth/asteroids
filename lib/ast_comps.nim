@@ -1,5 +1,10 @@
-import fowltek/entitty, fowltek/sdl2
+import fowltek/entitty
 import fowltek/TMaybe, math, fowltek/vector_math, fowltek/boundingbox
+import fowltek/sdl2/engine
+
+import_all_sdl2_modules
+import_all_sdl2_helpers
+
 type TVector2f* = TVector2[float]
 const
   TAU = PI * 2
@@ -55,8 +60,6 @@ msg_impl(Vel, update) do (dt: float):
 msg_impl(Vel, debugSTR) do(result:var seq[string]):
   result.add "Vel: $1" % $entity[Vel].vec
 
-from fowltek/sdl2/spritecache import newSpriteCache, get, PSprite, setImageRoot
-
 
 type
   SpriteInst* = object
@@ -64,6 +67,9 @@ type
     rect*: TRect
 SpriteInst.requiresComponent Pos
 
+debugStrImpl(SpriteInst):
+  result.add "Sprite: $1" % entity[SpriteInst].sprite.file
+  
 msg_impl(SpriteInst, getBoundingBox) do -> TBB:
   let p = entity[Pos].addr
   return bb(
@@ -99,6 +105,10 @@ type
     timer*: float
 SimpleAnim.requiresComponent SpriteInst
 
+debugStrImpl(SimpleAnim): 
+  result.add "SimpleAnim: frame $1/$2".format(
+    entity[SimpleAnim].curFrame, entity[SimpleAnim].frames.len)
+
 proc randf* (prec = 10_000): float {.inline.}= random(prec)/prec
 
 proc loadSimpleAnim* (ent: PEntity; R: PRenderer; file: string) =
@@ -126,23 +136,13 @@ type
     rect*: TRect
 ToroidalBounds.requiresComponent pos
 
+debugStrImpl(ToroidalBounds): 
+  result.add "Bounded to: $#".format(entity[ToroidalBounds].rect)
+
 proc right* (some: TRect): cint = some.x + some.w
 proc bottom*(some: TRect): cint = some.y + some.h
+#ToroidalBounds#update in ast_boilerplate
 
-msg_impl(ToroidalBounds, update) do (dt: float) :
-  let p = entity[Pos].addr
-  if p.x.cint < entity[ToroidalBounds].rect.x:
-    p.x = entity[ToroidalBounds].rect.right.float
-  elif p.x.cint > entity[ToroidalBounds].rect.right:
-    p.x = entity[ToroidalBounds].rect.x.float
-  if p.y.cint < entity[ToroidalBounds].rect.y:
-    p.y = entity[ToroidalBounds].rect.bottom.float
-  elif p.y.cint > entity[ToroidalBounds].rect.bottom:
-    p.y = entity[ToroidalBounds].rect.y.float
-
-
-from fowltek/sdl2/engine import radians2degrees, vectorForAngle, vectorToAngle
-import fowltek/sdl2/gfx
 type
   Orientation* = object
     angleRad*: float
@@ -311,6 +311,46 @@ msg_impl(RollSprite, roll) do (dir: TTurningState):
     entity[RollSprite].roll += 0.2
     if entity[RollSprite].roll > 1: entity[RollSprite].roll = 1
   else:nil
+
+
+
+proc die* {.unicast.}
+proc takeHealth*(amount: int) {.unicast.}
+
+type
+  Health* = object
+    hp, max: int
+  Immortal* = object
+
+msg_impl(Health, takeDamage) do (amount: int):
+  entity[Health].hp -= amount
+  if entity[Health].hp <= 0: entity.die
+defaultDebugStr(Health)
+
+msg_impl(Immortal, takeDamage) do(amount: int):
+  nil
+defaultDebugStr(Immortal)
+
+type
+  DebugShape* = ref object{.inheritable.}
+    draw*: proc(X: PEntity; R: PRenderer)
+  
+  PDebugCircle = ref object of DebugShape
+    radius: float
+
+DebugShape.setInitializer do (X: PEntity): 
+  X[DebugShape] = DebugShape(draw: proc(X: PEntity; R: PRenderer) = nil)
+  
+msg_impl(DebugShape, draw) do (R: PRenderer):
+  entity[DebugShape].draw entity, R
+
+proc debugCircle* (radius: float): DebugShape = PDebugCircle(
+    radius: radius,
+    draw: proc(X: PEntity, R: PRenderer) =
+      let p = X[pos].addr
+      R.circleRGBA p.x.int16, p.y.int16, X[DebugShape].PDebugCircle.radius.int16,
+        0,255,0,255   
+  ).DebugShape
 
 
 type

@@ -1,5 +1,5 @@
 import fowltek/entitty, fowltek/idgen, enet,
-  fowltek/tmaybe, fowltek/bbtree, ast_comps,
+  fowltek/tmaybe, fowltek/bbtree, lib/ast_comps,
   math, tables, fowltek/boundingbox
 
 type
