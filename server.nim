@@ -29,8 +29,6 @@ proc readyComponentTypes* (s: PServ) =
   s.clientType = s.domain.getTypeinfo(Named, Client)
 
 proc newServ* (port = 8024): TServer =
-  
-  echo "Initializing enet"
   if enet.initialize() != 0:
     quit "Could not initialize enet!"
   
@@ -52,6 +50,17 @@ proc newServ* (port = 8024): TServer =
     quit "Could not create the server!"
 
 
+proc get_ent* (S: PServ; id: int): PEntity{.inline.} = S.entities[id]
+
+proc add_ent* (S: PServ; ent: TEntity): int =
+  result = S.ent_id_counter.get
+  S.entities.ensureLen result+1
+  S.entities[result] = ent
+  S.get_ent(result).id = result
+  S.activeEntities.add result
+  S.bbtree.insert result, S.get_ent(result).getBoundingBox
+
+
 import algorithm
 proc poll* (S: PServ) = 
   # poll enet
@@ -60,9 +69,13 @@ proc poll* (S: PServ) =
     of EvtConnect:
       echo "New client from $1:$2".format(s.event.peer.address.host, s.event.peer.address.port)
       
-      var p: SanityCheck
+      let ID = S.add_ent (S.clientType.newEntity())
+      s.event.peer.data = cast[pointer](ID)
+      
+      #var p: SanityCheck
       var buf = newBuffer(6)
-      buf.writeBE p
+      #buf.writeBE p
+      buf.writeCopy SanityCheck()
       
       if s.event.peer.send(0.cuchar, buf.toPacket(FlagReliable)) < 0:
         echo "FAILED"
@@ -74,9 +87,15 @@ proc poll* (S: PServ) =
         resp = createPacket(cstring(msg), msg.len + 1, FlagReliable)
       """
     of EvtReceive:
-      echo "Recvd ($1) $2 ".format(
+      
+      let E_ID = cast[int](s.event.peer.data)
+      
+      
+      echo "Recvd ($1) from #$3 $2 ".format(
         s.event.packet.dataLength,
-        s.event.packet.data)
+        s.event.packet.data,
+        E_ID)
+      
       
       destroy(s.event.packet)
       
@@ -88,16 +107,6 @@ proc poll* (S: PServ) =
   
   if random(10) == 0:
     S.activeEntities.sort cmp[int]
-
-proc get_ent* (S: PServ; id: int): PEntity{.inline.} = S.entities[id]
-
-proc add_ent* (S: PServ; ent: TEntity): int =
-  result = S.ent_id_counter.get
-  S.entities.ensureLen result+1
-  S.entities[result] = ent
-  S.get_ent(result).id = result
-  S.activeEntities.add result
-  S.bbtree.insert result, S.get_ent(result).getBoundingBox
 
 proc add_ents* (S: PServ; num: int, components: varargs[int, `componentID`]): seq[int] =
   var ty = S.domain.getTypeinfo(components)

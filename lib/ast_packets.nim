@@ -3,7 +3,6 @@ import enet, fowltek/entitty
 import lib/ast_comps
 
 ## TODO write enet_pkt_utils.writeBE[int] !
-
 proc p* [T] (x: T): T =
   echo repr(x)
   return x
@@ -35,17 +34,23 @@ proc build_inner_peace (field, recd_list, read_body, write_body: PNimrodNode) {.
   echo treerepr(innertype) """
   
 
-macro defPacket* (pkt_name; ty; id): stmt {.immediate.} =
-  
+#macro defPacket* (pkt_name; ty; id): stmt {.immediate.} =
+macro defPacket* : stmt {.immediate.} =  
   result = newStmtList()
   
+  let 
+    cs = callsite()
+    pkt_name = $ cs[1]
+    ty = cs[2]
+  
   var 
-    write_body = newStmtList(
-      newCall("writeCopy", "buf".ident, id)
-    )
+    write_body = newStmtList()
     read_body = newStmtList() 
     pkt_ty = """type
       $1* = object""".format(pkt_name).parseExpr
+  
+  if len(cs) > 3:
+    write_body.add newCall("writeCopy", "buf".ident, cs[3])
   
   ## turn the tuple[] into a type def and
   ## generate the bodies of the writing/reading functions 
@@ -53,51 +58,61 @@ macro defPacket* (pkt_name; ty; id): stmt {.immediate.} =
   if ty.kind == nnkTupleTy:
     var recList = newNimNode(nnkRecList)
     
-    for idx in 0 .. < ty.len:
-      build_inner_peace ty[idx], recList, read_body, write_body
-      
+    for node in ty.children:
+      build_inner_peace node, recList, read_body, write_body
 
     pkt_ty[0][2][2] = recList
+
+  result.add pkt_ty
 
   var writeFunc = "proc writeBE* (buf: PBuffer; pkt: var $1) = nil".
     format(pkt_name).
     parseExpr
   if write_body.len > 0: writeFunc.body = write_body
   
+  result.add writeFunc
+  
   var readFunc = "proc readBE* (pkt: enet.PPacket; result: var $1) = nil".
     format(pkt_name).
     parseExpr
   if read_body.len > 0: readFunc.body = read_body
   
-  result.add pkt_ty
-  result.add writeFunc
   result.add readFunc
+  
   echo repr(result)
 
 
-
+type
+  TPacketHeader* = char
 
 # s2c packets
 defPacket SanityCheck, nil, 'a'
 
-defPacket pktWelcome, tuple[
+defPacket Welcome, tuple[
   serverName: string, numPlayers: int16, 
   numEntities: int16], 'b'
-defPacket pktNotWelcomeHere, tuple[reason: string], 'c'
-defPacket pktYourArenaIs, tuple[id: int32, name: string], 'd'
+defPacket NotWelcomeHere, tuple[reason: string], 'c'
+defPacket YourArenaIs, tuple[id: int32, name: string], 'd'
 
 # c2s packets
 defPacket componentRecd, tuple[
-  name: string, size: int32], 'z'
+  name: string, size: int32]
 
-proc reportComponents (peer: PPeer) =
-  var res: seq[componentRecd] = @[]
+
+defPacket hiThere, tuple[myName: string, components: seq[ComponentRecd]], 'A'
+
+proc sendHiThere* (peer:PPeer; name: string) = 
+  var pkt = hiThere(myName: name, components: newSeq[ComponentRecd](numComponents))
+  #echo "numcomponents: ", numComponents
   
+  echo "numcomponents: ", numcomponents
   for component in entitty.allComponents:
-    res.add componentRecd(name: component.name, size: component.size.int32)
+    echo "id ", component.id, " name: ", (if component.name.isNil: "NIL" else: component.name)
+    pkt.components.add componentRecd(name: component.name, size: component.size.int32)
   
-  var buf = newBuffer(512)
-  buf.writeBE res
+  var buf = newBuffer(128)
+  buf.writeBE pkt
+  if peer.send(0.cuchar, buf.toPacket(FlagReliable)) < 0:
+    quit "omg fix me"
 
-defPacket pktHiThere, tuple[myName: string, components: seq[ComponentRecd]], 'A'
 

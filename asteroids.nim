@@ -23,7 +23,7 @@ type
     host: PHost
     connected: bool
 
-    id: int
+    id: int 
 
 
 var 
@@ -150,18 +150,27 @@ proc `$`* [T] (some: openarray[T]): string =
       result.add ", "
   result.add "]"
 
+import enet_pkt_utils
+
+proc dispatchPacket* (c: var TClient; pkt: PPacket) {.inline.} =
+  if pkt.referenceCount >= pkt.dataLength: return
+  let pkt_type = pkt.readChar()
+  case pkt_type
+  of 'a':
+    c.peer.sendHiThere("phil")
+  
+  else: NIL
+  
 proc poll * (c: var TCLient) =
   var event: enet.TEvent
   while c.host.hostService(event, 1) >= 0 :
     case event.kind
     of EvtReceive:
-      echo ($ event.packet[])
-      if event.packet.isNil or event.packet.data.isNIL:
-        echo "Recvd NIL packet!"
-      else:
-        echo "Recvd ($1) $2 ".format(
-          event.packet.dataLength,
-          event.packet.data)
+      c.dispatchPacket event.packet
+      
+      discard """ echo "Recvd ($1) $2 ".format(
+        event.packet.dataLength,
+        event.packet.data) """
     
     of EvtDisconnect:
       echo "Disconnected"
