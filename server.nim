@@ -1,7 +1,8 @@
 
 import lib/ast_comps, lib/ast_packets
 import math, tables
-import enet, fowltek/entitty, fowltek/idgen, fowltek/tmaybe,
+import enet, enet_pkt_utils
+import fowltek/entitty, fowltek/idgen, fowltek/tmaybe,
   fowltek/bbtree, fowltek/boundingbox
 randomize()
 
@@ -59,14 +60,19 @@ proc poll* (S: PServ) =
     of EvtConnect:
       echo "New client from $1:$2".format(s.event.peer.address.host, s.event.peer.address.port)
       
-      var
-        msg = "hello" 
-        resp = createPacket(cstring(msg), msg.len + 1, FlagReliable)
-        
-      if s.event.peer.send(0.cuchar, resp) < 0:
+      var p: SanityCheck
+      var buf = newBuffer(6)
+      buf.writeBE p
+      
+      if s.event.peer.send(0.cuchar, buf.toPacket(FlagReliable)) < 0:
         echo "FAILED"
       else:
         echo "Replied"
+      
+      discard """ var
+        msg = "hello" 
+        resp = createPacket(cstring(msg), msg.len + 1, FlagReliable)
+      """
     of EvtReceive:
       echo "Recvd ($1) $2 ".format(
         s.event.packet.dataLength,

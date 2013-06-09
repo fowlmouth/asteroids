@@ -1,6 +1,5 @@
 import osproc, os, math, tables, strutils
-import enet
-import lib/ast_comps
+import enet, lib/ast_comps, lib/ast_packets
 import fowltek/entitty, fowltek/sdl2/engine,
   fowltek/idgen, fowltek/vector_math, fowltek/tmaybe, fowltek/bbtree
 import_all_sdl2_modules
@@ -35,7 +34,7 @@ var
   
   mouseEntID = -1
 var 
-  theServer : PProcess
+  serverProcess = Nothing[PProcess]()
   myClient: TClient
 
 template ENT (id): expr = entities[id] #activeServer.getEnt(id)
@@ -103,10 +102,10 @@ proc connect* (address: string; port: int): TMaybe[TClient]=
 
 
 proc newLocalServ* (port: int, cfg: string) : TClient =
-  theServer = startProcess(command = getAppDir() / "server", args = [
+  serverProcess = startProcess(command = getAppDir() / "server", args = [
     "-cfg:$#" % cfg,
     "-port:$#"% $port
-  ] )
+  ] ).Just
   
   let c = connect("localhost", port)
   if not c:
@@ -236,6 +235,7 @@ while running:
   NG.present
 
 destroy NG
-
-
+if serverProcess :
+  terminate serverProcess.val
+  echo "Server shutdown."
 
