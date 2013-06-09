@@ -3,43 +3,31 @@ import fowltek/entitty, fowltek/idgen, enet,
   math, tables, fowltek/boundingbox
 
 type
-  TServerMode* = enum
-    SClient, SHost
-  
-  PCServ* = var TCServ
-  TCServ* = object
-    entities*: seq[TEntity]
+  PServ* = var TServer
+  TServer* = object
+    entities: seq[TEntity]
     activeEntities*: seq[int]
-    domain*: TDomain
-    bbtree*: TBBTree[int]
-    eserv: TMaybe[enet.PHost]
-    case serverMode: TServerMode
-    of SHost:
-      idg: TIDgen[int]
-    else:nil
+    domain: TDomain
+    bbTree: TBBTree[int]
+    host: enet.PHost
+    ent_ID_counter: TIdgen[int]
 
-proc newServ* : TCServ =
+proc newServ* : TServer =
   result.entities = @[]
-  result.activeEntities = @[]
-  result.serverMode = SHost
-  result.idg = newIDGen[int]()
-  result.bbtree = newBBtree[int]()
-  
   result.domain = newDomain()
+  result.bbtree = newBBtree[int]()
+  result.activeEntities = @[]
 
-proc connect* (address: string; port: int): TMaybe[TCServ] =
-  nil
 
 import algorithm
-proc poll* (S: PCServ) = 
-  if S.eserv:
-    nil
+proc poll* (S: PServ) = 
+  # poll enet
   if random(10) == 0:
     S.activeEntities.sort cmp[int]
 
-proc get_ent* (S: PCServ; id: int): PEntity{.inline.} = S.entities[id]
+proc get_ent* (S: PServ; id: int): PEntity{.inline.} = S.entities[id]
 
-proc add_ent* (S: PCServ; ent: TEntity): int =
+proc add_ent* (S: PServ; ent: TEntity): int =
   result = S.idg.get
   S.entities.ensureLen result+1
   S.entities[result] = ent
@@ -47,7 +35,7 @@ proc add_ent* (S: PCServ; ent: TEntity): int =
   S.activeEntities.add result
   S.bbtree.insert result, S.get_ent(result).getBoundingBox
 
-proc add_ents* (S: PCserv; num: int, components: varargs[int, `componentID`]): seq[int] =
+proc add_ents* (S: PServ; num: int, components: varargs[int, `componentID`]): seq[int] =
   var ty = S.domain.getTypeinfo(components)
 
   newSeq result, 0
@@ -55,7 +43,7 @@ proc add_ents* (S: PCserv; num: int, components: varargs[int, `componentID`]): s
     let id = S.add_ent(ty.newEntity)
     result.add id
 
-proc each_ent_cb* (ids: seq[int]; S: PCServ; cb: proc(X: PEntity)) =
+proc each_ent_cb* (ids: seq[int]; S: PServ; cb: proc(X: PEntity)) =
   for id in ids:
     cb S.get_ent(id)
 
@@ -66,8 +54,11 @@ template eachEntity* (serv; body: stmt): stmt {.immediate,dirty.}=
     #if entity.id > -1:
     body
 
-proc update* (S: PCServ; dt: float) {.inline.}=
+proc update* (S: PServ; dt: float) {.inline.}=
   eachEntity(S): 
     entity.update dt
     S.bbtree.update entity.id, entity.getBoundingBox
 
+
+when isMainModule:
+  var server =   

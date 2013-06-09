@@ -45,6 +45,17 @@ proc add_asteroids (S: PCServ, num = 10) =
     init_random_asteroid
   )
 
+type
+  TClient* = object
+    
+
+
+proc connect* (address: string; port: int): TMaybe[TClient]=
+  nil
+
+proc newLocalServ* : TClient =
+  nil  
+
 proc initialize_local_game (
     ast_count = (if paramCount() == 1: paramStr(1).parseInt.int else: 10)
   ) =
