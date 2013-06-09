@@ -52,7 +52,7 @@ macro defPacket* (pkt_name; ty; id = -1): stmt {.immediate.} =
         format(thisName, repr(innerType)).#p.
         parseExpr
       
-      read_body.add "read(pkt, result.$1)".
+      read_body.add "readbe(pkt, result.$1)".
         format(thisName, repr(innerType)).
         parseExpr
 
@@ -63,7 +63,7 @@ macro defPacket* (pkt_name; ty; id = -1): stmt {.immediate.} =
     parseExpr
   if write_body.len > 0: writeFunc.body = write_body
   
-  var readFunc = "proc read* (pkt: enet.PPacket; result: var $1) = nil".
+  var readFunc = "proc readBE* (pkt: enet.PPacket; result: var $1) = nil".
     format(pkt_name).
     parseExpr
   if read_body.len > 0: readFunc.body = read_body
