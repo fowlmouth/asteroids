@@ -8,19 +8,41 @@ proc p* [T] (x: T): T =
   echo repr(x)
   return x
 
-var packetID_counter = 0
+proc build_inner_peace (field, recd_list, read_body, write_body: PNimrodNode) {.compiletime.}=
+  template thisTY: expr = ty[idx]
+  recd_List.add field.copy
+  for idx in 0 .. < <(< field.len ): # high - 2
+    let thisName = $ field[idx]
+    recd_list[< recd_list.len][idx] = thisName.ident.postFix("*")
+  
+    write_body.add "writeBE (buf, pkt.$1) ".
+      format(thisName).#, repr(innerType)).#p.
+      parseExpr
+    
+    read_body.add "readBE (pkt, result.$1)".
+      format(thisName).#, repr(innerType)).
+      parseExpr  
 
-macro defPacket* (pkt_name; ty; id = -1): stmt {.immediate.} =
-  discard """ var my_id = id.intval.int
-  if my_id == -1:
-    my_id = packetID_counter
-    inc packetID_counter
-   """
+
+  discard """ template thisTY: expr = field[< < field.len] ## field.high - 1
+  var innerType : PNimrodNode
+  if thisTY.kind == nnkBracketExpr and thisTy[0].ident == !"seq":
+    #innerType = thisTy[1][1]
+    echo "INNER TYPE ", treerepr(innerType)
+  else:
+    innerType = thisTy
+  
+  echo treerepr(innertype) """
+  
+
+macro defPacket* (pkt_name; ty; id): stmt {.immediate.} =
   
   result = newStmtList()
   
   var 
-    write_body = newStmtList()#"writeCopy buf, $1". format(my_id). parseExpr
+    write_body = newStmtList(
+      newCall("writeCopy", "buf".ident, id)
+    )
     read_body = newStmtList() 
     pkt_ty = """type
       $1* = object""".format(pkt_name).parseExpr
@@ -32,29 +54,8 @@ macro defPacket* (pkt_name; ty; id = -1): stmt {.immediate.} =
     var recList = newNimNode(nnkRecList)
     
     for idx in 0 .. < ty.len:
-      template thisTY: expr = ty[idx]
-      let thisName = $ thisTy[0]
-      recList.add thisTY.copy
-      recList[< recList.len][0] = thisName.ident.postFix("*")
+      build_inner_peace ty[idx], recList, read_body, write_body
       
-      var innerType : PNimrodNode
-      if thisTy[1].kind == nnkBracketExpr and thisTy[1][0].ident == !"seq":
-        
-        #innerType = thisTy[1][1]
-        echo "INNER TYPE ", treerepr(innerType)
-        
-      else:
-        innerType = thisTy[1]
-      
-      echo treerepr(innertype)
-      
-      write_body.add "writebe(buf, pkt.$1) ".
-        format(thisName, repr(innerType)).#p.
-        parseExpr
-      
-      read_body.add "readbe(pkt, result.$1)".
-        format(thisName, repr(innerType)).
-        parseExpr
 
     pkt_ty[0][2][2] = recList
 
@@ -77,15 +78,17 @@ macro defPacket* (pkt_name; ty; id = -1): stmt {.immediate.} =
 
 
 # s2c packets
-defPacket SanityCheck, nil
+defPacket SanityCheck, nil, 'a'
 
-defPacket pktWelcome, tuple[yourID: int32]
-defPacket pktNotWelcomeHere, tuple[reason: string]
-defPacket pktYourArenaIs, tuple[id: int32, name: string]
+defPacket pktWelcome, tuple[
+  serverName: string, numPlayers: int16, 
+  numEntities: int16], 'b'
+defPacket pktNotWelcomeHere, tuple[reason: string], 'c'
+defPacket pktYourArenaIs, tuple[id: int32, name: string], 'd'
 
 # c2s packets
 defPacket componentRecd, tuple[
-  name: string, size: int32]
+  name: string, size: int32], 'z'
 
 proc reportComponents (peer: PPeer) =
   var res: seq[componentRecd] = @[]
@@ -95,9 +98,6 @@ proc reportComponents (peer: PPeer) =
   
   var buf = newBuffer(512)
   buf.writeBE res
-  
 
-defPacket pktMyComponentsAre, tuple[components: seq[ComponentRecd]]
-
-defPacket pktHiThere, tuple[myName: string]
+defPacket pktHiThere, tuple[myName: string, components: seq[ComponentRecd]], 'A'
 
