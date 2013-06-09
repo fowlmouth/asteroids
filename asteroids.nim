@@ -1,69 +1,130 @@
-import lib/ast_comps, lib/ast_serv
-import fowltek/entitty, fowltek/sdl2/engine
-import os, fowltek/idgen, fowltek/vector_math, strutils
-import math, tables, fowltek/tmaybe, fowltek/bbtree
+import osproc, os, math, tables, strutils
+import enet
+import lib/ast_comps
+import fowltek/entitty, fowltek/sdl2/engine,
+  fowltek/idgen, fowltek/vector_math, fowltek/tmaybe, fowltek/bbtree
 import_all_sdl2_modules
+import_all_sdl2_helpers
+
 randomize()
 
 setImageRoot getAppDir()/"gfx"
 
 var NG =  newSdlEngine()
 
-var activeServer: TCServ
+#var activeServer: TCServ
+
+var arena_bbTree: TBBTree[int]
+
+type
+  TClient = object
+    event: enet.TEvent
+    address: enet.TAddress
+    peer: PPeer
+    host: PHost
+    connected: bool
+
+    id: int
+
+
+var 
+  entities = newSeq[TEntity](2048)
+  activeEntities = newSeq[int](0)
+  
+  localPlayerID = -1
+  
+  mouseEntID = -1
+var 
+  theServer : PProcess
+  myClient: TClient
+
+template ENT (id): expr = entities[id] #activeServer.getEnt(id)
+template localPlayer:expr = entities[localPlayerID] #activeServer.get_ent(localPlayerID)
+
+template EachEntity(body: stmt): stmt {.immediate.} = 
+  for i in activeEntities:
+    template entity : expr = ENT(i)
+    body
 
 include lib/ast_boilerplate
 
-var 
-  localPlayerID = -1
-  mouseEntID = -1
 
-template ENT (id): expr = activeServer.getEnt(id)
-template localPlayer:expr = activeServer.get_ent(localPlayerID)
 
-const Asteroids = [
-  "Rock24b_24x24.png",  
-  "Rock48b_48x48.png",
-  "Rock64b_64x64.png",
-  "Meteor_32x32.png",
-  "Rock32a_32x32.png",
-  "Rock48c_48x48.png",
-  "Rock64c_64x64.png",
-  "Rock24a_24x24.png",
-  "Rock48a_48x48.png",
-  "Rock64a_64x64.png"]
-
-proc init_random_asteroid (X: PEntity)= 
-  X.loadSimpleAnim NG, Asteroids[random(Asteroids.len)]
-  X[BoundingCircle] = BoundingCircle(radius: X[SpriteInst].sprite.center.x.float)
-
-proc add_asteroids (S: PCServ, num = 10) =
-  S.add_ents(
-    num,
-    Pos, Vel, SpriteInst, SimpleAnim, ToroidalBounds, Health, BoundingCircle
-  ).each_ent_cb(
-    S,
-    init_random_asteroid
-  )
 
 type
-  TClient* = object
-    
+  TEitherDir {.pure.} = enum Left, Right
+  TEither[TLeft,TRight] = object
+    case dir: TEitherDir
+    of TEitherDir.Left: item_l: TLeft
+    else:               item_r: TRight
+
+proc Left* (val; right: typedesc): TEither[type(val), right] = TEither(
+  dir: TEitherDir.Left,
+  item_l: val)
+  
+proc Right* (val; left: typedesc): TEither[left, type(val)] = TEither(
+  dir: TEitherDir.Right,
+  item_r: val)
+
+proc isLeft* [A,B] (some: TEitherDir[A,B]): bool {.inline.} = some.dir == TEitherDir.Left
+proc isRight*[A,B] (some: TEitherDir[A,B]): bool {.inline.} = some.dir == TEitherDir.Right
 
 
 proc connect* (address: string; port: int): TMaybe[TClient]=
-  nil
+  var  
+    address: enet.TAddress
+    peer: PPeer
+    client: PHost
 
-proc newLocalServ* : TClient =
-  nil  
+  if setHost(address.addr, "localhost") != 0:
+    quit "Could not set host"
+  address.port = 8024
+  
+  client = createHost(nil, 1, 2, 0, 0)
+  if client.isNIL:
+    quit "Could not create client!"
+
+
+  peer = client.connect(addr address, 2, 0)
+  if peer.isNIL:
+    quit "No available peers"
+
+  var event: enet.TEvent
+  if client.hostService(event, 500) > 0 and event.kind == EvtConnect:
+    echo "Connected"
+    
+  else:
+    quit "Connection failed"
+  
+  result = Just(TClient(
+    peer: peer, host: client, address: address, connected: true
+  ) )
+  arena_bbtree = newBBtree[int]()
+
+
+proc newLocalServ* (port: int, cfg: string) : TClient =
+  theServer = startProcess(command = getAppDir() / "server", args = [
+    "-cfg:$#" % cfg,
+    "-port:$#"% $port
+  ] )
+  
+  let c = connect("localhost", port)
+  if not c:
+    quit "Fail"
+  return c.val
+  
 
 proc initialize_local_game (
     ast_count = (if paramCount() == 1: paramStr(1).parseInt.int else: 10)
   ) =
-  activeServer = newServ()
-
-  activeServer.add_asteroids ast_count
-
-  localPlayerID = activeServer.add_ent(activeServer.domain.newEntity(Pos, Vel, SpriteInst, ToroidalBounds, 
+  
+  myClient = newLocalServ(8024, "alphazone.json")
+  
+  
+  #activeServer.add_asteroids ast_count
+  
+  
+  discard """ localPlayerID = activeServer.add_ent(activeServer.domain.newEntity(Pos, Vel, SpriteInst, ToroidalBounds, 
     HID_Controller, InputState, Acceleration, Orientation, RollSprite,
     BoundingCircle
   ))
@@ -77,8 +138,42 @@ proc initialize_local_game (
     DebugShape)) 
   mouseEntID.ent[DebugShape] = DebugCircle(5.0)
   if(var err = HID_Dispatcher.requestDevice("Mouse", mouseEntID.ent); err):
-    echo "Could not register mouse: ", err.val
-  
+    echo "Could not register mouse: ", err.val """
+
+
+proc `$`* (some: pointer): string = repr(some)
+
+proc `$`* [T] (some: openarray[T]): string = 
+  result = "["
+  for i in 0 .. <some.len:
+    result.add($ some[i])
+    if i < some.high:
+      result.add ", "
+  result.add "]"
+
+proc poll * (c: var TCLient) =
+  var event: enet.TEvent
+  while c.host.hostService(event, 1) >= 0 :
+    case event.kind
+    of EvtReceive:
+      echo ($ event.packet[])
+      if event.packet.isNil or event.packet.data.isNIL:
+        echo "Recvd NIL packet!"
+      else:
+        echo "Recvd ($1) $2 ".format(
+          event.packet.dataLength,
+          event.packet.data)
+    
+    of EvtDisconnect:
+      echo "Disconnected"
+      event.peer.data = nil
+      c.connected = false
+      break
+      
+    of EvtNone: break
+    else:
+      echo repr(c.event)
+
 
 initialize_local_game()
 
@@ -112,31 +207,31 @@ while running:
 
   let dt = NG.frameDeltaFLT
   
-  activeServer.poll
-  
-  if not paused:
-    activeServer.update dt
+  myclient.poll
 
-    if localPlayerID != -1:
-      collisions.setLen 0
-      activeServer.bbtree.collectCollisions localPlayerID, collisions
+  eachEntity:
+    entity.update dt
 
-    NG.setDrawColor 0,0,0,255
-    NG.clear
+  if localPlayerID != -1:
+    collisions.setLen 0
+    arena_bbtree.collectCollisions localPlayerID, collisions
 
-    eachEntity(activeServer):
-      entity.draw NG
+  NG.setDrawColor 0,0,0,255
+  NG.clear
 
-    LocalPlayer.drawDebugStrings NG
+  eachEntity:
+    entity.draw NG
 
-    if debugDrawEnabled:
-      eachEntity(activeServer):
-        entity.debugDraw NG
-      activeServer.bbtree.debugDraw NG
+  #LocalPlayer.drawDebugStrings NG
 
-    for ID in collisions:
-      let p = vec2s(ID.ent[pos])
-      NG.circleRGBA p.x,p.y, 20, 0,0,255,255      
+  if debugDrawEnabled:
+    eachEntity:
+      entity.debugDraw NG
+    arena_bbtree.debugDraw NG
+
+  for ID in collisions:
+    let p = vec2s(ID.ent[pos])
+    NG.circleRGBA p.x,p.y, 20, 0,0,255,255      
   
   NG.present
 

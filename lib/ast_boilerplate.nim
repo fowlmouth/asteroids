@@ -41,8 +41,8 @@ msg_impl(ToroidalBounds, update) do (dt: float) :
     wt: p.y = R.y.float
 
   if warped:
-    activeServer.bbtree.remove entity.id
-    activeServer.bbtree.insert entity.id, entity.getBoundingBox 
+    #activeServer.bbtree.remove entity.id
+    #activeServer.bbtree.insert entity.id, entity.getBoundingBox 
 
 
 
@@ -101,13 +101,13 @@ proc requestDevice* (disp: var T_HID_Dispatcher; dev_name: expr[string];
 proc handleEvent* (disp: var T_HID_Dispatcher; device: expr[string]; event: var sdl2.TEvent): bool =
   let ID = deviceID(device)
   if disp.hasDevice(ID) and disp.devices[ID].takenBy:  
-    result = 
-      activeServer.getEnt(disp.devices[ID].takenBy.val)[HID_Controller].cb(
-        activeServer.getEnt(disp.devices[ID].takenBy.val), event)
+    result =
+      ENT(disp.devices[ID].takenBy.val)[HID_Controller].cb(
+        ENT(disp.devices[ID].takenBy.val), event)
 
 
 HID_DeviceImpl("Mouse"):
-  X[HID_Controller].cb = proc(X: PEntity; event: var TEvent): bool =
+  X[HID_Controller].cb = proc(X: PEntity; event: var sdl2.TEvent): bool =
     if event.kind == mouseMotion:
       let m = evMouseMotion(event)
       X[pos].x = m.x.float
@@ -116,7 +116,7 @@ HID_DeviceImpl("Mouse"):
 
 HID_DeviceImpl("Keyboard"):
   #assert X.hasComponent(HID_Controller)
-  X[HID_Controller].cb = proc(X: PEntity; event: var TEvent): bool=
+  X[HID_Controller].cb = proc(X: PEntity; event: var sdl2.TEvent): bool=
     template rt(body: stmt): stmt = 
       body
       return true
