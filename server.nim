@@ -1,7 +1,9 @@
-import fowltek/entitty, fowltek/idgen, enet,
-  fowltek/tmaybe, fowltek/bbtree, lib/ast_comps,
-  math, tables, fowltek/boundingbox
 
+import lib/ast_comps, lib/ast_packets
+import math, tables
+import enet, fowltek/entitty, fowltek/idgen, fowltek/tmaybe,
+  fowltek/bbtree, fowltek/boundingbox
+randomize()
 
 type
   Client = object
