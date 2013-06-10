@@ -3,7 +3,7 @@ import
   enet,
   fowltek/entitty, fowltek/sdl2/engine,
   fowltek/idgen, fowltek/vector_math, fowltek/tmaybe, fowltek/bbtree, 
-  lib/ast_comps, lib/ast_packets, 
+  lib/ast_comps, lib/ast_packets, lib/input_dispatcher,
   lib/ast_gamestate, lib/states/lobby
 
 import_all_sdl2_modules
@@ -200,24 +200,7 @@ template stopRunning = running = false
 var collisions: seq[int] = @[]
 
 while running:
-  while NG.pollHandle:
-    case NG.evt.kind
-    of QuitEvent: stopRunning
-    of KeyDown:
-      if paused or not HID_Dispatcher.handleEvent("Keyboard", NG.evt):
-        let k = NG.evt.evKeyboard.keysym.sym
-        case k
-        of K_ESCAPE: stopRunning
-        of K_P: paused = not paused
-        of K_D: debugDrawEnabled = not debugDrawEnabled
-        else:nil
-    of keyUp:
-      if not paused:
-        discard HID_Dispatcher.handleEvent("Keyboard", NG.evt)
-    of MouseMotion, MouseButtonDown, MouseButtonUp, MouseWheel:
-      if not paused: 
-        discard HID_Dispatcher.handleEvent("Mouse", NG.evt)
-    else:nil
+  activeGS.poll NG, running
 
   let dt = NG.frameDeltaFLT
   # activeGS.update NG.frameDeltaFLT
@@ -247,9 +230,9 @@ while running:
       entity.debugDraw NG
     arena_bbtree.debugDraw NG
 
-  for ID in collisions:
-    let p = vec2s(ID.ent[pos])
-    NG.circleRGBA p.x,p.y, 20, 0,0,255,255      
+    for ID in collisions:
+      let p = vec2s(ID.ent[pos])
+      NG.circleRGBA p.x,p.y, 20, 0,0,255,255      
   
   NG.present """
 

@@ -40,7 +40,7 @@ proc lobbyUpdate* (gs: PGameState; dt: float) =
     entity.update dt
 
 var 
-  lobbyVT_d = TGS_Vtable(update: lobbyUpdate, draw: lobbyDraw)
+  lobbyVT_d = GS_VT(update = lobbyUpdate, draw = lobbyDraw)
   lobbyVT* = lobbyVT_d.addr
 
 proc lobbyState* : PGameState =

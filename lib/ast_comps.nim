@@ -359,12 +359,21 @@ Text.requiresComponent Pos
 msg_impl(Text, draw, 100) do (R: PRenderer):
   let p = vec2s(entity[Pos]) 
   R.stringRGBA p.x, p.y, entity[Text].str, 0,255,0,255
+msg_impl(Text, getBoundingBox, 100) do -> TBB:
+  let p = entity[Pos].addr
+  return bb(p.x, p.y, p.x + (8 * entity[Text].str.len).float, p.y + 10.0)
+
+
+proc handleClick* (pos: TVector2f): bool {.unicast.}
+  
 
 type
   Clickable* = object
     cb*: proc(X: PEntity)
 
-msg_impl(Clickable, dummy) do:
-  nil
+msg_impl(Clickable, handleClick) do (pos: TVector2f) -> bool:
+  if pos in entity.getBoundingBox:
+    entity[Clickable].cb(entity)
+    return true
 
 
