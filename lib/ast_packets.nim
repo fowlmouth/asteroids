@@ -10,28 +10,20 @@ proc p* [T] (x: T): T =
 proc build_inner_peace (field, recd_list, read_body, write_body: PNimrodNode) {.compiletime.}=
   template thisTY: expr = ty[idx]
   recd_List.add field.copy
-  for idx in 0 .. < <(< field.len ): # high - 2
+  for idx in 0 .. <field.len - 2: # high - 2
     let thisName = $ field[idx]
+    #export the name
     recd_list[< recd_list.len][idx] = thisName.ident.postFix("*")
-  
+    
+    #writeBE(buf, pkt.field)
     write_body.add "writeBE (buf, pkt.$1) ".
       format(thisName).#, repr(innerType)).#p.
       parseExpr
-    
+    #readBE(pkt, result.field)
     read_body.add "readBE (pkt, result.$1)".
       format(thisName).#, repr(innerType)).
       parseExpr  
-
-
-  discard """ template thisTY: expr = field[< < field.len] ## field.high - 1
-  var innerType : PNimrodNode
-  if thisTY.kind == nnkBracketExpr and thisTy[0].ident == !"seq":
-    #innerType = thisTy[1][1]
-    echo "INNER TYPE ", treerepr(innerType)
-  else:
-    innerType = thisTy
   
-  echo treerepr(innertype) """
   
 
 #macro defPacket* (pkt_name; ty; id): stmt {.immediate.} =
@@ -89,6 +81,7 @@ type
 defPacket SanityCheck, nil, 'a'
 
 defPacket Welcome, tuple[
+  yourID: int32,
   serverName: string, numPlayers: int16, 
   numEntities: int16], 'b'
 defPacket NotWelcomeHere, tuple[reason: string], 'c'
@@ -104,12 +97,10 @@ defPacket hiThere, tuple[myName: string, components: seq[ComponentRecd]], 'A'
 proc sendHiThere* (peer:PPeer; name: string) = 
   var pkt = hiThere(myName: name, components: newSeq[ComponentRecd](numComponents))
   #echo "numcomponents: ", numComponents
-  
-  echo "numcomponents: ", numcomponents
+
   for component in entitty.allComponents:
-    echo "id ", component.id, " name: ", (if component.name.isNil: "NIL" else: component.name)
-    pkt.components.add componentRecd(name: component.name, size: component.size.int32)
-  
+    pkt.components[component.id] = componentRecd(name: component.name, size: component.size.int32)
+
   var buf = newBuffer(128)
   buf.writeBE pkt
   if peer.send(0.cuchar, buf.toPacket(FlagReliable)) < 0:

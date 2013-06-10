@@ -18,6 +18,7 @@ const
   TAU = PI * 2
   HalfPI = PI/2
 
+proc dummy {.unicast.}
 
 proc debugSTR* (result: var seq[string]) {.multicast.}
 proc debugSTR* (entity: PEntity): seq[string] =
@@ -350,8 +351,20 @@ type
     name: string
 
 
+type
+  Text* = object
+    str*: string
+Text.requiresComponent Pos
 
+msg_impl(Text, draw, 100) do (R: PRenderer):
+  let p = vec2s(entity[Pos]) 
+  R.stringRGBA p.x, p.y, entity[Text].str, 0,255,0,255
 
+type
+  Clickable* = object
+    cb*: proc(X: PEntity)
 
+msg_impl(Clickable, dummy) do:
+  nil
 
 

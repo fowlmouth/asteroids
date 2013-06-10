@@ -5,17 +5,23 @@ import enet, enet_pkt_utils
 import fowltek/entitty, fowltek/idgen, fowltek/tmaybe,
   fowltek/bbtree, fowltek/boundingbox
 randomize()
+ 
+let number_of_components_the_client_should_have = entitty.numComponents
 
+## client does not have these components 
 type
   Client = object
     peer: enet.PPeer
+msgImpl(Client, dummy) do:
+  nil
 
 
 type
   PServ* = var TServer
   TServer* = object
+    name: string
     entities: seq[TEntity]
-    activeEntities*: seq[int]
+    activeEntities, clients: seq[int]
     domain: TDomain
     bbTree: TBBTree[int]
     address: enet.TAddress
@@ -32,7 +38,9 @@ proc newServ* (port = 8024): TServer =
   if enet.initialize() != 0:
     quit "Could not initialize enet!"
   
+  result.name = "how2config"
   result.entities = @[]
+  result.clients = @[]
   result.bbtree = newBBtree[int]()
   result.activeEntities = @[]
   result.ent_id_counter = newidgen[int]()
@@ -61,6 +69,43 @@ proc add_ent* (S: PServ; ent: TEntity): int =
   S.bbtree.insert result, S.get_ent(result).getBoundingBox
 
 
+proc addClient (S: PServ; peer: PPeer; name: string): int =
+  result = S.add_ent (S.clientType.newEntity())
+  peer.data = cast[pointer](result)
+  S.clients.add result
+
+proc dispatchPacket (S:PServ; entity: int; packet: PPacket; peer: PPeer) = 
+  let c = packet.readChar()
+  case c
+  of 'A':
+    if entity != -1:
+      #already logged in
+      
+      return
+    
+    var msg: hiThere
+    packet.readBE msg
+    echo "new player: ", msg.myName
+    echo "player claims ", msg.components.len, " components"
+    ## make sure the components are the sames as mine, check client version or something else here too
+    # make sure name is okay
+    
+    # setup an entity for the client, assign id
+    
+    let id = S.addClient (peer, msg.myName)
+    
+    # now they are logged in
+    var resp = Welcome(
+      yourID: id.int32,
+      serverName: S.name,
+      numPlayers: S.clients.len.int16,
+      numEntities: S.entities.len.int16)
+    var buf = newBuffer(64)
+    buf.writeBE resp
+    discard peer.send(0.cuchar, buf.toPacket(flagReliable))
+    
+  else:NIL
+
 import algorithm
 proc poll* (S: PServ) = 
   # poll enet
@@ -69,13 +114,13 @@ proc poll* (S: PServ) =
     of EvtConnect:
       echo "New client from $1:$2".format(s.event.peer.address.host, s.event.peer.address.port)
       
-      let ID = S.add_ent (S.clientType.newEntity())
-      s.event.peer.data = cast[pointer](ID)
+      s.event.peer.data = cast[pointer](-1)
       
       #var p: SanityCheck
       var buf = newBuffer(6)
       #buf.writeBE p
-      buf.writeCopy SanityCheck()
+      var pkt = SanityCheck()
+      buf.writeBE pkt
       
       if s.event.peer.send(0.cuchar, buf.toPacket(FlagReliable)) < 0:
         echo "FAILED"
@@ -96,6 +141,7 @@ proc poll* (S: PServ) =
         s.event.packet.data,
         E_ID)
       
+      s.dispatchPacket E_ID, s.event.packet, s.event.peer
       
       destroy(s.event.packet)
       
@@ -166,8 +212,9 @@ proc add_asteroids (S: PServ, num = 10) =
 
 when isMainModule:
   import parseopt
-  var port = 8024
-  var cfg: string
+  var 
+    port = 8024
+    cfg  = "alphazone.json"
   
   for ki, k,v in getOpt():
     case ki

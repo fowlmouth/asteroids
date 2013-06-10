@@ -1,7 +1,11 @@
-import osproc, os, math, tables, strutils
-import enet, lib/ast_comps, lib/ast_packets
-import fowltek/entitty, fowltek/sdl2/engine,
-  fowltek/idgen, fowltek/vector_math, fowltek/tmaybe, fowltek/bbtree
+import 
+  osproc, os, math, tables, strutils,
+  enet,
+  fowltek/entitty, fowltek/sdl2/engine,
+  fowltek/idgen, fowltek/vector_math, fowltek/tmaybe, fowltek/bbtree, 
+  lib/ast_comps, lib/ast_packets, 
+  lib/ast_gamestate, lib/states/lobby
+
 import_all_sdl2_modules
 import_all_sdl2_helpers
 
@@ -25,8 +29,9 @@ type
 
     id: int 
 
-
 var 
+  gs = @[ lobbyState() ]
+
   entities = newSeq[TEntity](2048)
   activeEntities = newSeq[int](0)
   
@@ -37,6 +42,9 @@ var
   serverProcess = Nothing[PProcess]()
   myClient: TClient
 
+TEMPLATE activeGS : expr = gs[< gs.len]
+proc pushState (S: PGameState) = gs.add S
+
 template ENT (id): expr = entities[id] #activeServer.getEnt(id)
 template localPlayer:expr = entities[localPlayerID] #activeServer.get_ent(localPlayerID)
 
@@ -46,27 +54,6 @@ template EachEntity(body: stmt): stmt {.immediate.} =
     body
 
 include lib/ast_boilerplate
-
-
-
-
-type
-  TEitherDir {.pure.} = enum Left, Right
-  TEither[TLeft,TRight] = object
-    case dir: TEitherDir
-    of TEitherDir.Left: item_l: TLeft
-    else:               item_r: TRight
-
-proc Left* (val; right: typedesc): TEither[type(val), right] = TEither(
-  dir: TEitherDir.Left,
-  item_l: val)
-  
-proc Right* (val; left: typedesc): TEither[left, type(val)] = TEither(
-  dir: TEitherDir.Right,
-  item_r: val)
-
-proc isLeft* [A,B] (some: TEitherDir[A,B]): bool {.inline.} = some.dir == TEitherDir.Left
-proc isRight*[A,B] (some: TEitherDir[A,B]): bool {.inline.} = some.dir == TEitherDir.Right
 
 
 proc connect* (address: string; port: int): TMaybe[TClient]=
@@ -95,17 +82,19 @@ proc connect* (address: string; port: int): TMaybe[TClient]=
   else:
     quit "Connection failed"
   
-  result = Just(TClient(
+  result.assign TClient(
     peer: peer, host: client, address: address, connected: true
-  ) )
+  )
   arena_bbtree = newBBtree[int]()
 
 
 proc newLocalServ* (port: int, cfg: string) : TClient =
-  serverProcess = startProcess(command = getAppDir() / "server", args = [
-    "-cfg:$#" % cfg,
-    "-port:$#"% $port
-  ] ).Just
+  serverProcess = Maybe(
+    startProcess("server", args = [
+      "-cfg:$#" % cfg,
+      "-port:$#"% $port
+  ] ) )
+  sleep 100 # power nap
   
   let c = connect("localhost", port)
   if not c:
@@ -157,9 +146,25 @@ proc dispatchPacket* (c: var TClient; pkt: PPacket) {.inline.} =
   let pkt_type = pkt.readChar()
   case pkt_type
   of 'a':
+    # sanity check
     c.peer.sendHiThere("phil")
   
-  else: NIL
+  of 'b':
+    var msg: Welcome
+    pkt.readBE msg
+    
+    echo "Logged into $1.\L  Players: $2  Entities: $3".format(
+      msg.servername, msg.numPlayers, msg.numEntities)
+
+  of 'c':
+    # not welcome packet
+    # go back to the lobby
+  
+  
+  else: 
+    echo "I ignored a packet today. Header was '",pkt_type,"' (",pkt_type.ord,
+      ") len: ", pkt.dataLength
+
   
 proc poll * (c: var TCLient) =
   var event: enet.TEvent
@@ -182,8 +187,9 @@ proc poll * (c: var TCLient) =
     else:
       echo repr(c.event)
 
+pushState lobbyState()
 
-initialize_local_game()
+#initialize_local_game()
 
 
 var running = true
@@ -214,17 +220,21 @@ while running:
     else:nil
 
   let dt = NG.frameDeltaFLT
-  
-  myclient.poll
+  # activeGS.update NG.frameDeltaFLT
 
-  eachEntity:
+  #myclient.poll
+
+  activeGS.update dt
+  
+  discard """ eachEntity:
     entity.update dt
 
   if localPlayerID != -1:
     collisions.setLen 0
-    arena_bbtree.collectCollisions localPlayerID, collisions
+    arena_bbtree.collectCollisions localPlayerID, collisions """
 
-  NG.setDrawColor 0,0,0,255
+  activeGS.draw NG
+  discard """ NG.setDrawColor 0,0,0,255
   NG.clear
 
   eachEntity:
@@ -241,10 +251,9 @@ while running:
     let p = vec2s(ID.ent[pos])
     NG.circleRGBA p.x,p.y, 20, 0,0,255,255      
   
-  NG.present
+  NG.present """
 
 destroy NG
-if serverProcess :
+if serverProcess and serverProcess.val.running:
   terminate serverProcess.val
   echo "Server shutdown."
-
